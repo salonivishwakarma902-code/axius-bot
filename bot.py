@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.request
 import urllib.parse
 import logging
@@ -392,6 +394,28 @@ def handle_general_message(message):
         bot.send_message(chat_id, f"Arre Boss, thoda technical issue aaya: {e}")
 
 
+class CloudHealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"AXIUS OS - AXIA Telegram Bot is Online 24/7!")
+
+    def log_message(self, format, *args):
+        pass  # Suppress health check logs to keep console clean
+
+
+def start_cloud_health_server():
+    """Binds to PORT for Render Free Web Service health checks."""
+    port = int(os.getenv("PORT", 8080))
+    try:
+        server = HTTPServer(("0.0.0.0", port), CloudHealthHandler)
+        print(f"🌐 Cloud Health Check Server live on port {port} (Render Free Tier Ready)", flush=True)
+        server.serve_forever()
+    except Exception as e:
+        print(f"Health server notice: {e}", flush=True)
+
+
 def run_bot_service():
     """Starts the bot with automatic conflict resolution & crash recovery."""
     print("==================================================", flush=True)
@@ -403,6 +427,9 @@ def run_bot_service():
     print("⌨️ Interactive Buttons: Active (Clean & Minimal)", flush=True)
     print("👉 Telegram par jaiye aur @AXIUSOS_bot se chat kijiye!", flush=True)
     print("==================================================", flush=True)
+
+    # Start background health server for Render Free Web Service
+    threading.Thread(target=start_cloud_health_server, daemon=True).start()
 
     # Clean old webhooks / pending conflicts
     try:
@@ -422,3 +449,4 @@ def run_bot_service():
 
 if __name__ == "__main__":
     run_bot_service()
+
