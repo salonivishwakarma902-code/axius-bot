@@ -1,0 +1,9 @@
+# Secret environment variables (DO NOT SHARE OR COMMIT TO GIT)
+.env
+.env.*
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+venv/
+.venv/
