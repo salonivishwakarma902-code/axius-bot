@@ -3,6 +3,8 @@ import sys
 import time
 import random
 import threading
+import io
+from PIL import Image, ImageDraw
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.request
 import urllib.parse
@@ -186,19 +188,57 @@ def generate_and_send_image(chat_id: int, user_prompt: str):
         enhanced_prompt = enhance_prompt_with_gemini(user_prompt)
         print(f"🎨 Enhanced prompt: {enhanced_prompt}", flush=True)
 
-        # 2. Fetch high-resolution image from Flux engine
-        encoded_prompt = urllib.parse.quote(enhanced_prompt)
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&model=flux&nologo=true"
+        image_bytes = None
+        engine_used = "Gemini Native AI"
 
-        req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        with urllib.request.urlopen(req, timeout=40) as response:
-            image_bytes = response.read()
+        # 2. Try direct Gemini API Key image generation first
+        try:
+            print("🤖 Requesting image via Gemini API Key...", flush=True)
+            config = genai_types.GenerateContentConfig(response_modalities=["IMAGE"])
+            res = client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=enhanced_prompt,
+                config=config
+            )
+            for part in res.candidates[0].content.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    print("✅ Gemini API direct image generated!", flush=True)
+                    break
+        except Exception as gemini_err:
+            print(f"Gemini direct image notice (activating fast engine): {gemini_err}", flush=True)
+
+        # 3. Fast & stable fallback if Gemini free-tier quota is restricted
+        if not image_bytes:
+            engine_used = "AXIUS 4K Ultra Engine"
+            encoded_prompt = urllib.parse.quote(enhanced_prompt)
+            # Reliable URL without model=flux to prevent HTTP 500
+            image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?nologo=true"
+            req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                image_bytes = response.read()
+
+        # 4. Custom Branding & Logo Overlay using PIL
+        try:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            watermark_text = "👑 AXIUS OS • AXIA"
+            # Draw subtle text shadow and text in bottom-right corner
+            draw.text((w - 230, h - 35), watermark_text, fill=(0, 0, 0, 180))
+            draw.text((w - 232, h - 37), watermark_text, fill=(255, 255, 255, 240))
+            output = io.BytesIO()
+            img.convert("RGB").save(output, format="JPEG", quality=95)
+            image_bytes = output.getvalue()
+        except Exception as branding_err:
+            print(f"Branding notice: {branding_err}", flush=True)
 
         caption = (
             f"🖼️ **4K Ultra-HD Masterpiece Rendered!** ✨\n\n"
             f"📌 **Prompt**: {user_prompt}\n"
-            f"💎 **Quality**: 4K Photorealistic Flux Render\n"
-            f"👑 **Powered by**: AXIUS OS • AXIA\n\n"
+            f"🧠 **Brain**: Gemini Intelligence\n"
+            f"🎨 **Engine**: {engine_used}\n"
+            f"👑 **Branding**: AXIUS OS • AXIA\n\n"
             f"Kaisi lagi Boss? Koi aur photo banwani ho to bas bol dijiye! 🥰"
         )
 
@@ -208,6 +248,7 @@ def generate_and_send_image(chat_id: int, user_prompt: str):
     except Exception as e:
         logging.error(f"Image generation error: {e}")
         bot.send_message(chat_id, f"Arre Boss, image render karne mein dikkat aayi: {e}")
+
 
 
 def send_long_message(chat_id: int, text: str):
